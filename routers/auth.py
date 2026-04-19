@@ -16,7 +16,6 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM")
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-# Schémas
 class RegisterRequest(BaseModel):
     email: str
     nom: str
@@ -26,7 +25,10 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-# Fonctions utilitaires
+class ChangePasswordRequest(BaseModel):
+    ancien_password: str
+    nouveau_password: str
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -41,14 +43,11 @@ def create_token(user_id: int, email: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-# Endpoints
 @router.post("/register")
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    # Vérifier si l'email existe déjà
     existing = db.query(User).filter(User.email == request.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email déjà utilisé")
-    
     user = User(
         email=request.email,
         nom=request.nom,
@@ -57,7 +56,6 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    
     token = create_token(user.id, user.email)
     return {"access_token": token, "token_type": "bearer", "nom": user.nom, "email": user.email}
 
@@ -66,29 +64,23 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
-    
     token = create_token(user.id, user.email)
     return {"access_token": token, "token_type": "bearer", "nom": user.nom, "email": user.email}
 
 @router.get("/me")
 def get_me(db: Session = Depends(get_db)):
-    # Pour l'instant retourne juste un message
-    return {"message": "endpoint /me fonctionnel"}
-
-class ChangePasswordRequest(BaseModel):
-    ancien_password: str
-    nouveau_password: str
-
-@router.put("/change-password")
-def change_password(request: ChangePasswordRequest, db: Session = Depends(get_db)):
-    # Pour l'instant on prend le premier user (un seul admin)
     user = db.query(User).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    
+    return {"email": user.email, "nom": user.nom}
+
+@router.put("/change-password")
+def change_password(request: ChangePasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if not verify_password(request.ancien_password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Ancien mot de passe incorrect")
-    
     user.hashed_password = hash_password(request.nouveau_password)
     db.commit()
     return {"message": "Mot de passe changé avec succès"}

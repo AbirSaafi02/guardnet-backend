@@ -10,7 +10,6 @@ DATABASE_URL = "postgresql+psycopg://postgres:1410@localhost:5432/guardnet"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
 def get_db():
     db = SessionLocal()
     try:

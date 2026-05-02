@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.models import Alert, AnomalyLog, MetricHistory
 from ia.predict import predict_anomaly
+from services.alerts_service import create_alert, get_setting_value
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/anomaly", tags=["Anomalie"])
@@ -41,20 +42,35 @@ def detect_anomaly(db: Session = Depends(get_db)):
     # 3. Appeler le modèle IA
     result = predict_anomaly(features)
 
-    # 4. Si anomalie → créer une alerte
+    # 4. Vérifier les seuils Settings pour les alertes de latence
+    latency_threshold = get_setting_value(db, "LATENCY_HIGH_THRESHOLD", 100)
+    if features["latency_ms"] is not None and features["latency_ms"] > latency_threshold:
+        create_alert(
+            db,
+            "LATENCY_HIGH",
+            metadata={
+                "latency_ms": features["latency_ms"],
+                "threshold": latency_threshold,
+            },
+        )
+
+    # 5. Si anomalie → créer une alerte
     alert_id = None
     if result["is_anomaly"]:
-        alert = Alert(
-            type="ANOMALY_DETECTED",
-            severity="critical",
-            message=f"Anomalie détectée ! Score: {result['score']} Confiance: {result['confidence']}",
+        anomaly_threshold = get_setting_value(db, "ANOMALY_SCORE_THRESHOLD", 0.5)
+        severity = "critical" if result["score"] >= anomaly_threshold else "warning"
+        alert = create_alert(
+            db,
+            "ANOMALY_DETECTED",
+            severity=severity,
+            metadata={
+                "score": result["score"],
+                "confidence": result["confidence"],
+            },
         )
-        db.add(alert)
-        db.commit()
-        db.refresh(alert)
         alert_id = alert.id
 
-    # 5. Sauvegarder la prédiction dans AnomalyLog
+    # 6. Sauvegarder la prédiction dans AnomalyLog
     log = AnomalyLog(
         features=features,
         score=result["score"],

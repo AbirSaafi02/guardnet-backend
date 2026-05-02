@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
-from models.models import Scan, ScanResult, Device, Alert
+from models.models import Scan, ScanResult, Device
 from schemas.scan import ScanRequest
 from services.scanner import NetworkScanner
+from services.alerts_service import create_alert
 import asyncio, io, pandas as pd
 from datetime import datetime
 
@@ -21,6 +22,8 @@ async def run_scan(ip_range, scan_type, scan_id, db: Session):
         r["is_new"] = r["ip"] not in existing_ips
 
         device = db.query(Device).filter(Device.ip == r["ip"]).first()
+        previous_scan = db.query(ScanResult).filter(ScanResult.device_ip == r["ip"]).order_by(ScanResult.id.desc()).first()
+
         if not device:
             device = Device(
                 ip=r["ip"],
@@ -31,14 +34,38 @@ async def run_scan(ip_range, scan_type, scan_id, db: Session):
             )
             db.add(device)
             db.flush()
-            alert = Alert(
-                type="NEW_UNKNOWN_DEVICE",
-                severity="warning",
-                message=f"Nouveau device détecté : {r['ip']} ({r['device_type']})",
-                device_id=device.id
+            create_alert(
+                db,
+                "NEW_DEVICE",
+                device_id=device.id,
+                metadata={"ip": r["ip"], "device_type": r["device_type"]},
             )
-            db.add(alert)
         else:
+            current_ports = {p["port"] for p in r["ports"]}
+            previous_ports = {p["port"] for p in (previous_scan.ports or [])} if previous_scan else set()
+            added_ports = sorted(list(current_ports - previous_ports))
+            removed_ports = sorted(list(previous_ports - current_ports))
+
+            if added_ports or removed_ports:
+                create_alert(
+                    db,
+                    "PORT_CHANGE",
+                    device_id=device.id,
+                    metadata={
+                        "ip": r["ip"],
+                        "added": added_ports,
+                        "removed": removed_ports,
+                    },
+                )
+
+            if r["state"] == "down" and device.status != "down":
+                create_alert(
+                    db,
+                    "DEVICE_DOWN",
+                    device_id=device.id,
+                    metadata={"ip": r["ip"]},
+                )
+
             device.hostname = r["hostname"]
             device.os_name = r["os_name"]
             device.device_type = r["device_type"]

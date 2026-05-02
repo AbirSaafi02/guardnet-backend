@@ -8,8 +8,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database import SessionLocal, get_db
-from backend.models.models import Alert, Device, Scan, ScanResult
+from backend.models.models import Device, Scan, ScanResult
 from backend.schemas.scan import ScanRequest
+from backend.services.alerts_service import create_alert
 from backend.services.scanner import NetworkScanner
 
 router = APIRouter(prefix="/scan", tags=["Scan"])
@@ -20,14 +21,25 @@ async def run_scan(ip_range: str, scan_type: str, scan_id: int):
     db = SessionLocal()
     try:
         loop = asyncio.get_running_loop()
-        results = await loop.run_in_executor(None, scanner.scan, ip_range, scan_type)
+        scan_output = await loop.run_in_executor(None, scanner.scan, ip_range, scan_type)
+        if isinstance(scan_output, dict):
+            if "error" in scan_output:
+                raise RuntimeError(scan_output["error"])
+            results = scan_output.get("hosts", [])
+        else:
+            results = scan_output
 
         existing_ips = {device.ip for device in db.query(Device).all()}
 
         for result in results:
+            ports = result.get("ports") or []
             result["is_new"] = result["ip"] not in existing_ips
 
             device = db.query(Device).filter(Device.ip == result["ip"]).first()
+            previous_scan = db.query(ScanResult).filter(
+                ScanResult.device_ip == result["ip"]
+            ).order_by(ScanResult.id.desc()).first()
+
             if not device:
                 device = Device(
                     ip=result["ip"],
@@ -38,15 +50,45 @@ async def run_scan(ip_range: str, scan_type: str, scan_id: int):
                 )
                 db.add(device)
                 db.flush()
-                db.add(
-                    Alert(
-                        type="NEW_UNKNOWN_DEVICE",
-                        severity="warning",
-                        message=f"Nouveau device detecte : {result['ip']} ({result['device_type']})",
-                        device_id=device.id,
-                    )
+                create_alert(
+                    db,
+                    "NEW_DEVICE",
+                    device_id=device.id,
+                    metadata={
+                        "ip": result["ip"],
+                        "device_type": result["device_type"],
+                    },
                 )
             else:
+                current_ports = {port["port"] for port in ports}
+                previous_ports = (
+                    {port["port"] for port in (previous_scan.ports or [])}
+                    if previous_scan
+                    else set()
+                )
+                added_ports = sorted(current_ports - previous_ports)
+                removed_ports = sorted(previous_ports - current_ports)
+
+                if added_ports or removed_ports:
+                    create_alert(
+                        db,
+                        "PORT_CHANGE",
+                        device_id=device.id,
+                        metadata={
+                            "ip": result["ip"],
+                            "added": added_ports,
+                            "removed": removed_ports,
+                        },
+                    )
+
+                if result["state"] == "down" and device.status != "down":
+                    create_alert(
+                        db,
+                        "DEVICE_DOWN",
+                        device_id=device.id,
+                        metadata={"ip": result["ip"]},
+                    )
+
                 device.hostname = result["hostname"]
                 device.os_name = result["os_name"]
                 device.device_type = result["device_type"]
@@ -60,7 +102,7 @@ async def run_scan(ip_range: str, scan_type: str, scan_id: int):
                     hostname=result["hostname"],
                     os_name=result["os_name"],
                     device_type=result["device_type"],
-                    ports=result["ports"],
+                    ports=ports,
                     is_new=result["is_new"],
                 )
             )

@@ -23,13 +23,17 @@
        class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-700">
       ⚠️ Anomalies
     </a>
+    <a routerLink="/profil" routerLinkActive="bg-blue-600"
+       class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-700">
+      👤 Profil
+    </a>
   </nav>
 
   <!-- Déconnexion -->
   <div class="mt-auto">
-    <button class="w-full p-3 bg-red-600 rounded-lg hover:bg-red-700">
+    <button (click)="logout()" class="w-full p-3 bg-red-600 rounded-lg hover:bg-red-700">
       🚪 Déconnexion
     </button>
   </div>
 
-</div>npm install -D tailwindcss@3 postcss autoprefixer --legacy-peer-deps
+</div>

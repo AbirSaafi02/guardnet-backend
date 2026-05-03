@@ -1,9 +1,61 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { MonitoringService } from '../../services/monitoring';
+import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-dashboard',
-  imports: [],
-  templateUrl: './dashboard.html',
-  styleUrl: './dashboard.css',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './dashboard.component.html',
+  styleUrls: ['./dashboard.component.css']
 })
-export class Dashboard {}
+export class DashboardComponent implements OnInit, OnDestroy {
+
+  summary: any = { total: 0, online: 0, offline: 0 };
+  devices: any[] = [];
+  trafficHistory: any[] = [];
+  private intervalId: any;
+
+  constructor(private monitoringService: MonitoringService) {}
+
+  ngOnInit(): void {
+    this.loadData();
+    // Polling toutes les 30 secondes
+    this.intervalId = setInterval(() => {
+      this.loadData();
+    }, 30000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+  }
+
+  loadData(): void {
+    this.monitoringService.getSummary().subscribe({
+      next: (data) => this.summary = data,
+      error: (err) => console.error('Erreur summary:', err)
+    });
+
+    this.monitoringService.getDevices().subscribe({
+      next: (data) => this.devices = data,
+      error: (err) => console.error('Erreur devices:', err)
+    });
+
+    this.monitoringService.getTrafficHistory().subscribe({
+      next: (data) => this.trafficHistory = data,
+      error: (err) => console.error('Erreur traffic:', err)
+    });
+  }
+
+  getOnlinePercent(): number {
+    if (this.summary.total === 0) return 0;
+    return Math.round((this.summary.online / this.summary.total) * 100);
+  }
+
+  getOfflinePercent(): number {
+    if (this.summary.total === 0) return 0;
+    return Math.round((this.summary.offline / this.summary.total) * 100);
+  }
+}

@@ -1,1 +1,45 @@
+<div class="login-container">
+  <div class="login-card">
+    
+    <div class="login-header">
+      <span class="shield-icon">🛡️</span>
+      <h1>GuardNet</h1>
+      <p>Plateforme de supervision réseau</p>
+    </div>
 
+    <div class="login-form">
+      <div class="form-group">
+        <label>Email</label>
+        <input 
+          type="email" 
+          [(ngModel)]="email" 
+          placeholder="admin@guardnet.com"
+          class="form-input"
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Mot de passe</label>
+        <input 
+          type="password" 
+          [(ngModel)]="password" 
+          placeholder="••••••••"
+          class="form-input"
+        />
+      </div>
+
+      <div class="error-message" *ngIf="errorMessage">
+        ⚠️ {{ errorMessage }}
+      </div>
+
+      <button 
+        class="login-btn" 
+        (click)="onLogin()"
+        [disabled]="isLoading"
+      >
+        {{ isLoading ? 'Connexion...' : 'Se connecter' }}
+      </button>
+    </div>
+
+  </div>
+</div>

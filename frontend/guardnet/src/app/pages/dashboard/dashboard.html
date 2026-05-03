@@ -1,61 +1,104 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { MonitoringService } from '../../services/monitoring';
-import { CommonModule } from '@angular/common';
+<div class="dashboard">
 
-@Component({
-selector: 'app-dashboard',
-standalone: true,
-imports: [CommonModule],
-templateUrl: './dashboard.component.html',
-styleUrls: ['./dashboard.component.css']
-})
-export class DashboardComponent implements OnInit, OnDestroy {
+  <!-- Header -->
+  <div class="dashboard-header">
+    <h1>GuardNet Dashboard</h1>
+    <span class="refresh-info">Mise à jour toutes les 30s</span>
+  </div>
 
-summary: any = { total: 0, online: 0, offline: 0 };
-devices: any[] = [];
-trafficHistory: any[] = [];
-private intervalId: any;
+  <!-- Metric Cards -->
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon total">📡</div>
+      <div class="card-info">
+        <span class="card-label">Total Appareils</span>
+        <span class="card-value">{{ summary.total }}</span>
+      </div>
+    </div>
 
-constructor(private monitoringService: MonitoringService) {}
+    <div class="card">
+      <div class="card-icon online">✅</div>
+      <div class="card-info">
+        <span class="card-label">En ligne</span>
+        <span class="card-value green">{{ summary.online }}</span>
+      </div>
+    </div>
 
-ngOnInit(): void {
-this.loadData();
-// Polling toutes les 30 secondes
-this.intervalId = setInterval(() => {
-this.loadData();
-}, 30000);
-}
+    <div class="card">
+      <div class="card-icon offline">❌</div>
+      <div class="card-info">
+        <span class="card-label">Hors ligne</span>
+        <span class="card-value red">{{ summary.offline }}</span>
+      </div>
+    </div>
 
-ngOnDestroy(): void {
-if (this.intervalId) {
-clearInterval(this.intervalId);
-}
-}
+    <div class="card">
+      <div class="card-icon percent">📊</div>
+      <div class="card-info">
+        <span class="card-label">Disponibilité</span>
+        <span class="card-value">{{ getOnlinePercent() }}%</span>
+      </div>
+    </div>
+  </div>
 
-loadData(): void {
-this.monitoringService.getSummary().subscribe({
-next: (data) => this.summary = data,
-error: (err) => console.error('Erreur summary:', err)
-});
+  <!-- Tableau des appareils -->
+  <div class="section">
+    <h2>État des Appareils</h2>
+    <table class="devices-table">
+      <thead>
+      <tr>
+        <th>IP</th>
+        <th>Hostname</th>
+        <th>Type</th>
+        <th>Statut</th>
+        <th>Dernière vue</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr *ngFor="let device of devices">
+        <td>{{ device.ip }}</td>
+        <td>{{ device.hostname || '—' }}</td>
+        <td>{{ device.device_type }}</td>
+        <td>
+            <span [class]="device.status === 'online' ? 'badge online' : 'badge offline'">
+              {{ device.status }}
+            </span>
+        </td>
+        <td>{{ device.last_seen | date:'dd/MM/yyyy HH:mm' }}</td>
+      </tr>
+      <tr *ngIf="devices.length === 0">
+        <td colspan="5" class="empty">Aucun appareil trouvé</td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
 
-this.monitoringService.getDevices().subscribe({
-next: (data) => this.devices = data,
-error: (err) => console.error('Erreur devices:', err)
-});
+  <!-- Trafic réseau -->
+  <div class="section">
+    <h2>Historique du Trafic</h2>
+    <table class="devices-table">
+      <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Total Paquets</th>
+        <th>TCP %</th>
+        <th>UDP %</th>
+        <th>Bytes Total</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr *ngFor="let traffic of trafficHistory">
+        <td>{{ traffic.timestamp | date:'dd/MM/yyyy HH:mm' }}</td>
+        <td>{{ traffic.total_packets }}</td>
+        <td>{{ traffic.tcp_pct }}%</td>
+        <td>{{ traffic.udp_pct }}%</td>
+        <td>{{ traffic.bytes_total }}</td>
+      </tr>
+      <tr *ngIf="trafficHistory.length === 0">
+        <td colspan="5" class="empty">Aucun trafic enregistré</td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
 
-this.monitoringService.getTrafficHistory().subscribe({
-next: (data) => this.trafficHistory = data,
-error: (err) => console.error('Erreur traffic:', err)
-});
-}
-
-getOnlinePercent(): number {
-if (this.summary.total === 0) return 0;
-return Math.round((this.summary.online / this.summary.total) * 100);
-}
-
-getOfflinePercent(): number {
-if (this.summary.total === 0) return 0;
-return Math.round((this.summary.offline / this.summary.total) * 100);
-}
-}
+</div>
